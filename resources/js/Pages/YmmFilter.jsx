@@ -50,10 +50,14 @@ export default function YmmFilter({ auth }) {
         try {
             setLoading(true);
             const response = await axios.get('/api/ymm/makes');
-            setMakes(response.data.data);
+            
+            // Handle different response structures safely
+            const data = response.data?.data || response.data || [];
+            setMakes(Array.isArray(data) ? data : []);
         } catch (err) {
             setError('Failed to load makes');
-            console.error(err);
+            console.error('Error loading makes:', err);
+            setMakes([]);
         } finally {
             setLoading(false);
         }
@@ -65,10 +69,14 @@ export default function YmmFilter({ auth }) {
             const response = await axios.get('/api/ymm/models', {
                 params: { make }
             });
-            setModels(response.data.data);
+            
+            // Handle different response structures safely  
+            const data = response.data?.data || response.data || [];
+            setModels(Array.isArray(data) ? data : []);
         } catch (err) {
             setError('Failed to load models');
-            console.error(err);
+            console.error('Error loading models:', err);
+            setModels([]);
         } finally {
             setLoading(false);
         }
@@ -80,10 +88,14 @@ export default function YmmFilter({ auth }) {
             const response = await axios.get('/api/ymm/year-ranges', {
                 params: { make, model }
             });
-            setYearRanges(response.data.data);
+            
+            // Handle different response structures safely
+            const data = response.data?.data || response.data || [];
+            setYearRanges(Array.isArray(data) ? data : []);
         } catch (err) {
             setError('Failed to load year ranges');
-            console.error(err);
+            console.error('Error loading year ranges:', err);
+            setYearRanges([]);
         } finally {
             setLoading(false);
         }
@@ -95,11 +107,15 @@ export default function YmmFilter({ auth }) {
             const response = await axios.get('/api/ymm/compatible-products', {
                 params: { make, model, year }
             });
-            setCompatibleProducts(response.data.data);
+            
+            // Handle different response structures safely
+            const data = response.data?.data || response.data || [];
+            setCompatibleProducts(Array.isArray(data) ? data : []);
             setError('');
         } catch (err) {
             setError('Failed to load compatible products');
-            console.error(err);
+            console.error('Error loading compatible products:', err);
+            setCompatibleProducts([]);
         } finally {
             setLoading(false);
         }

@@ -18,10 +18,17 @@ class BigCommerceApiController extends Controller
         $storeHash = $request->input('store_hash') ?: $request->header('X-Store-Hash');
         $accessToken = $request->input('access_token') ?: $request->header('X-Access-Token');
         
-        // Option 2: From session (for admin app calls)
+        // Option 2: From session (for admin app calls) - with safety check
         if (!$storeHash || !$accessToken) {
-            $storeHash = $request->session()->get('store_hash');
-            $accessToken = $request->session()->get('access_token');
+            try {
+                if ($request->hasSession() && $request->session()->isStarted()) {
+                    $storeHash = $request->session()->get('store_hash');
+                    $accessToken = $request->session()->get('access_token');
+                }
+            } catch (\Exception $e) {
+                // Session not available, continue with other options
+                \Log::info('Session not available for API request: ' . $e->getMessage());
+            }
         }
         
         // Option 3: From database lookup using store identifier
@@ -34,6 +41,14 @@ class BigCommerceApiController extends Controller
                     $storeHash = $storeCredentials['store_hash'];
                     $accessToken = $storeCredentials['access_token'];
                 }
+            }
+        }
+        
+        // Option 4: Try to find from database using store hash
+        if ($storeHash && !$accessToken) {
+            $store = BigCommerceStore::where('store_hash', $storeHash)->first();
+            if ($store) {
+                $accessToken = $store->access_token;
             }
         }
         
@@ -67,7 +82,7 @@ class BigCommerceApiController extends Controller
     }
 
     /**
-     * Get all products with their custom fields for YMM filtering
+     * Get all products with their custom fields for YMM filtering (with pagination)
      */
     public function getProductsWithYmmFields(Request $request): JsonResponse
     {
@@ -77,39 +92,49 @@ class BigCommerceApiController extends Controller
             return response()->json(['error' => 'Store credentials not found'], 401);
         }
 
+        $page = (int) $request->input('page', 1);
+        $limit = min((int) $request->input('limit', 50), 250); // Cap at 250
+        
         try {
-            // Get all products
-            $productsResponse = Http::withHeaders([
-                'X-Auth-Token' => $credentials['access_token'],
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json'
-            ])->get($credentials['api_url'] . '/catalog/products', [
-                'limit' => 250,
-                'include_fields' => 'id,name,sku,price,inventory_level'
-            ]);
-
-            if (!$productsResponse->successful()) {
-                return response()->json(['error' => 'Failed to fetch products'], 500);
-            }
-
-            $products = $productsResponse->json()['data'];
-            $productsWithYmm = [];
-
-            // For each product, get its custom fields
-            foreach ($products as $product) {
-                $customFieldsResponse = Http::withHeaders([
+            // Cache key for this page
+            $cacheKey = "products_with_ymm_{$credentials['store_hash']}_page_{$page}_limit_{$limit}";
+            
+            $result = Cache::remember($cacheKey, 300, function () use ($credentials, $page, $limit) {
+                // Get products with pagination
+                $productsResponse = Http::withHeaders([
                     'X-Auth-Token' => $credentials['access_token'],
-                    'Accept' => 'application/json'
-                ])->get($credentials['api_url'] . "/catalog/products/{$product['id']}/custom-fields");
+                    'Accept' => 'application/json',
+                    'Content-Type' => 'application/json'
+                ])->get($credentials['api_url'] . '/catalog/products', [
+                    'limit' => $limit,
+                    'page' => $page,
+                    'include_fields' => 'id,name,sku,price,inventory_level,images'
+                ]);
 
-                if ($customFieldsResponse->successful()) {
-                    $customFields = $customFieldsResponse->json()['data'];
+                if (!$productsResponse->successful()) {
+                    return ['error' => 'Failed to fetch products', 'status' => $productsResponse->status()];
+                }
+
+                $responseData = $productsResponse->json();
+                $products = $responseData['data'];
+                $meta = $responseData['meta']['pagination'] ?? [];
+                
+                $productsWithYmm = [];
+
+                // Batch process products for better performance
+                $productIds = array_column($products, 'id');
+                $customFieldsBatch = $this->getCustomFieldsBatch($credentials, $productIds);
+
+                foreach ($products as $product) {
+                    $productId = $product['id'];
                     
-                    // Extract YMM fields
+                    // Get YMM fields for this product
                     $ymmData = [];
-                    foreach ($customFields as $field) {
-                        if (str_starts_with($field['name'], 'ymm_')) {
-                            $ymmData[$field['name']] = $field['value'];
+                    if (isset($customFieldsBatch[$productId])) {
+                        foreach ($customFieldsBatch[$productId] as $field) {
+                            if (str_starts_with($field['name'], 'ymm_')) {
+                                $ymmData[$field['name']] = $field['value'];
+                            }
                         }
                     }
 
@@ -119,9 +144,20 @@ class BigCommerceApiController extends Controller
                         $productsWithYmm[] = $product;
                     }
                 }
+
+                return [
+                    'data' => $productsWithYmm,
+                    'pagination' => $meta,
+                    'total_products' => count($products),
+                    'ymm_products' => count($productsWithYmm)
+                ];
+            });
+
+            if (isset($result['error'])) {
+                return response()->json(['error' => $result['error']], $result['status'] ?? 500);
             }
 
-            return response()->json($productsWithYmm);
+            return response()->json($result);
 
         } catch (\Exception $e) {
             \Log::error('Error fetching products with YMM fields: ' . $e->getMessage());
@@ -130,7 +166,42 @@ class BigCommerceApiController extends Controller
     }
 
     /**
-     * Get compatible products based on YMM selection using custom fields
+     * Batch fetch custom fields for multiple products (more efficient)
+     */
+    private function getCustomFieldsBatch($credentials, $productIds): array
+    {
+        $customFieldsBatch = [];
+        
+        // Process in smaller batches to avoid rate limits
+        $batches = array_chunk($productIds, 10);
+        
+        foreach ($batches as $batch) {
+            foreach ($batch as $productId) {
+                try {
+                    $customFieldsResponse = Http::timeout(10)->withHeaders([
+                        'X-Auth-Token' => $credentials['access_token'],
+                        'Accept' => 'application/json'
+                    ])->get($credentials['api_url'] . "/catalog/products/{$productId}/custom-fields");
+
+                    if ($customFieldsResponse->successful()) {
+                        $customFieldsBatch[$productId] = $customFieldsResponse->json()['data'];
+                    }
+                    
+                    // Small delay to respect rate limits
+                    usleep(100000); // 0.1 second delay
+                    
+                } catch (\Exception $e) {
+                    \Log::warning("Failed to fetch custom fields for product {$productId}: " . $e->getMessage());
+                    $customFieldsBatch[$productId] = [];
+                }
+            }
+        }
+        
+        return $customFieldsBatch;
+    }
+
+    /**
+     * Get compatible products based on YMM selection using custom fields (with pagination)
      */
     public function getCompatibleProductsByCustomFields(Request $request): JsonResponse
     {
@@ -148,57 +219,74 @@ class BigCommerceApiController extends Controller
             return response()->json(['error' => 'Store credentials not found'], 401);
         }
 
+        $page = (int) $request->input('page', 1);
+        $limit = min((int) $request->input('limit', 50), 250);
+
         try {
             // Cache key for this search
-            $cacheKey = "compatible_products_{$credentials['store_hash']}_{$year}_{$make}_{$model}";
+            $cacheKey = "compatible_products_{$credentials['store_hash']}_{$year}_{$make}_{$model}_page_{$page}_limit_{$limit}";
             
-            $compatibleProducts = Cache::remember($cacheKey, 300, function () use ($credentials, $year, $make, $model) {
-                // Get all products
-                $productsResponse = Http::withHeaders([
+            $result = Cache::remember($cacheKey, 300, function () use ($credentials, $year, $make, $model, $page, $limit) {
+                // Get products with pagination
+                $productsResponse = Http::timeout(30)->withHeaders([
                     'X-Auth-Token' => $credentials['access_token'],
                     'Accept' => 'application/json'
                 ])->get($credentials['api_url'] . '/catalog/products', [
-                    'limit' => 250,
-                    'include_fields' => 'id,name,sku,price,inventory_level,images'
+                    'limit' => $limit,
+                    'page' => $page,
+                    'include_fields' => 'id,name,sku,price,inventory_level,images,custom_url'
                 ]);
 
                 if (!$productsResponse->successful()) {
-                    return [];
+                    return ['error' => 'Failed to fetch products', 'status' => $productsResponse->status()];
                 }
 
-                $products = $productsResponse->json()['data'];
+                $responseData = $productsResponse->json();
+                $products = $responseData['data'];
+                $meta = $responseData['meta']['pagination'] ?? [];
+
                 $compatibleProducts = [];
+                $productIds = array_column($products, 'id');
+                $customFieldsBatch = $this->getCustomFieldsBatch($credentials, $productIds);
 
                 foreach ($products as $product) {
-                    // Get custom fields for this product
-                    $customFieldsResponse = Http::withHeaders([
-                        'X-Auth-Token' => $credentials['access_token'],
-                        'Accept' => 'application/json'
-                    ])->get($credentials['api_url'] . "/catalog/products/{$product['id']}/custom-fields");
-
-                    if ($customFieldsResponse->successful()) {
-                        $customFields = $customFieldsResponse->json()['data'];
-                        
-                        $ymmData = [];
-                        foreach ($customFields as $field) {
+                    $productId = $product['id'];
+                    
+                    // Get YMM fields for this product
+                    $ymmData = [];
+                    if (isset($customFieldsBatch[$productId])) {
+                        foreach ($customFieldsBatch[$productId] as $field) {
                             if (str_starts_with($field['name'], 'ymm_')) {
                                 $ymmData[$field['name']] = $field['value'];
                             }
                         }
+                    }
 
-                        // Check compatibility
-                        if ($this->isProductCompatible($ymmData, $year, $make, $model)) {
-                            $compatibleProducts[] = $product;
-                        }
+                    // Check compatibility
+                    if (!empty($ymmData) && $this->isProductCompatible($ymmData, $year, $make, $model)) {
+                        // Add YMM data to product for reference
+                        $product['ymm_data'] = $ymmData;
+                        $compatibleProducts[] = $product;
                     }
                 }
 
-                return $compatibleProducts;
+                return [
+                    'products' => $compatibleProducts,
+                    'pagination' => $meta,
+                    'count' => count($compatibleProducts),
+                    'total_checked' => count($products)
+                ];
             });
 
+            if (isset($result['error'])) {
+                return response()->json(['error' => $result['error']], $result['status'] ?? 500);
+            }
+
             return response()->json([
-                'products' => $compatibleProducts,
-                'count' => count($compatibleProducts),
+                'data' => $result['products'],
+                'pagination' => $result['pagination'],
+                'count' => $result['count'],
+                'total_checked' => $result['total_checked'],
                 'filters' => [
                     'year' => $year,
                     'make' => $make,
@@ -379,48 +467,83 @@ class BigCommerceApiController extends Controller
     }
 
     /**
-     * Helper method to get all products with YMM data
+     * Helper method to get all products with YMM data (with pagination support)
      */
     private function getAllProductsWithYmmData($credentials): array
     {
-        $productsResponse = Http::withHeaders([
-            'X-Auth-Token' => $credentials['access_token'],
-            'Accept' => 'application/json'
-        ])->get($credentials['api_url'] . '/catalog/products', [
-            'limit' => 250
-        ]);
+        $allProductsWithYmm = [];
+        $page = 1;
+        $limit = 50; // Smaller batch size for better performance
+        
+        do {
+            try {
+                $productsResponse = Http::timeout(30)->withHeaders([
+                    'X-Auth-Token' => $credentials['access_token'],
+                    'Accept' => 'application/json'
+                ])->get($credentials['api_url'] . '/catalog/products', [
+                    'limit' => $limit,
+                    'page' => $page
+                ]);
 
-        if (!$productsResponse->successful()) {
-            return [];
-        }
+                if (!$productsResponse->successful()) {
+                    break;
+                }
 
-        $products = $productsResponse->json()['data'];
-        $productsWithYmm = [];
-
-        foreach ($products as $product) {
-            $customFieldsResponse = Http::withHeaders([
-                'X-Auth-Token' => $credentials['access_token'],
-                'Accept' => 'application/json'
-            ])->get($credentials['api_url'] . "/catalog/products/{$product['id']}/custom-fields");
-
-            if ($customFieldsResponse->successful()) {
-                $customFields = $customFieldsResponse->json()['data'];
+                $responseData = $productsResponse->json();
+                $products = $responseData['data'];
+                $meta = $responseData['meta']['pagination'] ?? [];
                 
-                $ymmData = [];
-                foreach ($customFields as $field) {
-                    if (str_starts_with($field['name'], 'ymm_')) {
-                        $ymmData[$field['name']] = $field['value'];
+                if (empty($products)) {
+                    break;
+                }
+
+                // Get custom fields for this batch
+                $productIds = array_column($products, 'id');
+                $customFieldsBatch = $this->getCustomFieldsBatch($credentials, $productIds);
+
+                foreach ($products as $product) {
+                    $productId = $product['id'];
+                    
+                    // Get YMM fields for this product
+                    $ymmData = [];
+                    if (isset($customFieldsBatch[$productId])) {
+                        foreach ($customFieldsBatch[$productId] as $field) {
+                            if (str_starts_with($field['name'], 'ymm_')) {
+                                $ymmData[$field['name']] = $field['value'];
+                            }
+                        }
+                    }
+
+                    if (!empty($ymmData)) {
+                        $product['ymm_data'] = $ymmData;
+                        $allProductsWithYmm[] = $product;
                     }
                 }
 
-                if (!empty($ymmData)) {
-                    $product['ymm_data'] = $ymmData;
-                    $productsWithYmm[] = $product;
+                // Check if there are more pages
+                $hasNextPage = isset($meta['current_page']) && isset($meta['total_pages']) 
+                    && $meta['current_page'] < $meta['total_pages'];
+                    
+                if (!$hasNextPage) {
+                    break;
                 }
+                
+                $page++;
+                
+                // Limit to prevent infinite loops
+                if ($page > 20) { // Max 1000 products (20 * 50)
+                    \Log::warning("getAllProductsWithYmmData: Reached page limit for store {$credentials['store_hash']}");
+                    break;
+                }
+                
+            } catch (\Exception $e) {
+                \Log::error("Error fetching products page {$page}: " . $e->getMessage());
+                break;
             }
-        }
+            
+        } while (true);
 
-        return $productsWithYmm;
+        return $allProductsWithYmm;
     }
 
     /**

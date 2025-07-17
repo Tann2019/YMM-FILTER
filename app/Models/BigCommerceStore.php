@@ -10,6 +10,8 @@ class BigCommerceStore extends Model
 {
     use HasFactory;
 
+    protected $table = 'bigcommerce_stores';
+
     protected $fillable = [
         'store_hash',
         'store_name',

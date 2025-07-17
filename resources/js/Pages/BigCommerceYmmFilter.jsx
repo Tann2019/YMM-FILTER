@@ -51,10 +51,14 @@ export default function BigCommerceYmmFilter({ auth }) {
             setLoading(true);
             setError('');
             const response = await axios.get('/api/bc-ymm/makes');
-            setMakes(response.data.data);
+            
+            // Handle different response structures safely
+            const data = response.data?.data || response.data || [];
+            setMakes(Array.isArray(data) ? data : []);
         } catch (err) {
             setError('Failed to load makes from BigCommerce');
-            console.error(err);
+            console.error('Error loading makes:', err);
+            setMakes([]);
         } finally {
             setLoading(false);
         }
@@ -67,10 +71,14 @@ export default function BigCommerceYmmFilter({ auth }) {
             const response = await axios.get('/api/bc-ymm/models', {
                 params: { make }
             });
-            setModels(response.data.data);
+            
+            // Handle different response structures safely
+            const data = response.data?.data || response.data || [];
+            setModels(Array.isArray(data) ? data : []);
         } catch (err) {
             setError('Failed to load models from BigCommerce');
-            console.error(err);
+            console.error('Error loading models:', err);
+            setModels([]);
         } finally {
             setLoading(false);
         }
@@ -83,10 +91,14 @@ export default function BigCommerceYmmFilter({ auth }) {
             const response = await axios.get('/api/bc-ymm/year-ranges', {
                 params: { make, model }
             });
-            setYearRanges(response.data.data);
+            
+            // Handle different response structures safely
+            const data = response.data?.data || response.data || [];
+            setYearRanges(Array.isArray(data) ? data : []);
         } catch (err) {
             setError('Failed to load year ranges from BigCommerce');
-            console.error(err);
+            console.error('Error loading year ranges:', err);
+            setYearRanges([]);
         } finally {
             setLoading(false);
         }
@@ -99,10 +111,14 @@ export default function BigCommerceYmmFilter({ auth }) {
             const response = await axios.get('/api/bc-ymm/compatible-products', {
                 params: { make, model, year }
             });
-            setCompatibleProducts(response.data.data);
+            
+            // Handle different response structures safely
+            const data = response.data?.data || response.data || [];
+            setCompatibleProducts(Array.isArray(data) ? data : []);
         } catch (err) {
             setError('Failed to load compatible products from BigCommerce');
-            console.error(err);
+            console.error('Error loading compatible products:', err);
+            setCompatibleProducts([]);
         } finally {
             setLoading(false);
         }
@@ -197,34 +213,35 @@ export default function BigCommerceYmmFilter({ auth }) {
                                                 </option>
                                             ))}
                                         </select>
-                                    </div>
-
-                                    {/* Year Select */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Year
-                                        </label>
-                                        <select
-                                            value={selectedYear}
-                                            onChange={(e) => setSelectedYear(e.target.value)}
-                                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            disabled={loading || !selectedModel}
-                                        >
-                                            <option value="">Select Year</option>
-                                            {yearRanges.map((range, index) => {
-                                                // Generate individual years from year ranges
-                                                const years = [];
-                                                for (let year = range.start; year <= range.end; year++) {
-                                                    years.push(year);
-                                                }
-                                                return years.map((year) => (
-                                                    <option key={`${index}-${year}`} value={year}>
-                                                        {year}
-                                                    </option>
-                                                ));
-                                            })}
-                                        </select>
-                                    </div>
+                                    </div>                            {/* Year Select */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Year
+                                </label>
+                                <select
+                                    value={selectedYear}
+                                    onChange={(e) => setSelectedYear(e.target.value)}
+                                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    disabled={loading || !selectedModel}
+                                >
+                                    <option value="">Select Year</option>
+                                    {yearRanges.map((range, index) => {
+                                        if (!range || typeof range.start === 'undefined' || typeof range.end === 'undefined') {
+                                            return null;
+                                        }
+                                        // Generate individual years from year ranges
+                                        const years = [];
+                                        for (let year = range.start; year <= range.end; year++) {
+                                            years.push(year);
+                                        }
+                                        return years.map((year) => (
+                                            <option key={`${index}-${year}`} value={year}>
+                                                {year}
+                                            </option>
+                                        ));
+                                    })}
+                                </select>
+                            </div>
 
                                     {/* Reset Button */}
                                     <div className="flex items-end">
@@ -263,68 +280,78 @@ export default function BigCommerceYmmFilter({ auth }) {
                                 <div>
                                     <h3 className="text-lg font-medium mb-4">Compatible Bumpers from BigCommerce</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {compatibleProducts.map((product) => (
-                                            <div key={product.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow">
-                                                {product.images && product.images.length > 0 && (
-                                                    <img
-                                                        src={product.images[0].url_standard}
-                                                        alt={product.name}
-                                                        className="w-full h-48 object-cover rounded mb-4"
-                                                    />
-                                                )}
-                                                <h4 className="font-medium text-gray-900 mb-2">{product.name}</h4>
-                                                <p className="text-sm text-gray-600 mb-2">
-                                                    <span className="font-medium">SKU:</span> {product.sku}
-                                                </p>
-                                                <p className="text-sm text-gray-600 mb-2">
-                                                    <span className="font-medium">Product ID:</span> {product.id}
-                                                </p>
-                                                <p className="text-lg font-bold text-green-600">
-                                                    ${parseFloat(product.price).toFixed(2)}
-                                                </p>
-                                                {product.description && (
-                                                    <p className="text-sm text-gray-500 mt-2 line-clamp-3">
-                                                        {product.description.replace(/<[^>]*>/g, '').substring(0, 100)}...
+                                        {compatibleProducts.map((product) => {
+                                            // Safe product rendering with null checks
+                                            if (!product || !product.id) {
+                                                return null;
+                                            }
+                                            
+                                            return (
+                                                <div key={product.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-lg transition-shadow">
+                                                    {product.images && product.images.length > 0 && product.images[0]?.url_standard && (
+                                                        <img
+                                                            src={product.images[0].url_standard}
+                                                            alt={product.name || 'Product'}
+                                                            className="w-full h-48 object-cover rounded mb-4"
+                                                            onError={(e) => {
+                                                                e.target.style.display = 'none';
+                                                            }}
+                                                        />
+                                                    )}
+                                                    <h4 className="font-medium text-gray-900 mb-2">{product.name || 'Unnamed Product'}</h4>
+                                                    <p className="text-sm text-gray-600 mb-2">
+                                                        <span className="font-medium">SKU:</span> {product.sku || 'N/A'}
                                                     </p>
-                                                )}
-                                                
-                                                {/* Custom Fields Display */}
-                                                {product.custom_fields && product.custom_fields.length > 0 && (
-                                                    <div className="mt-3 p-2 bg-gray-50 rounded text-xs">
-                                                        <strong>Compatibility:</strong>
-                                                        {product.custom_fields.map((field) => {
-                                                            if (field.name.startsWith('ymm_')) {
-                                                                return (
-                                                                    <div key={field.name}>
-                                                                        {field.name.replace('ymm_', '').replace('_', ' ')}: {field.value}
-                                                                    </div>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        })}
+                                                    <p className="text-sm text-gray-600 mb-2">
+                                                        <span className="font-medium">Product ID:</span> {product.id}
+                                                    </p>
+                                                    <p className="text-lg font-bold text-green-600">
+                                                        ${product.price ? parseFloat(product.price).toFixed(2) : '0.00'}
+                                                    </p>
+                                                    {product.description && (
+                                                        <p className="text-sm text-gray-500 mt-2 line-clamp-3">
+                                                            {product.description.replace(/<[^>]*>/g, '').substring(0, 100)}...
+                                                        </p>
+                                                    )}
+                                                    
+                                                    {/* Custom Fields Display */}
+                                                    {product.custom_fields && product.custom_fields.length > 0 && (
+                                                        <div className="mt-3 p-2 bg-gray-50 rounded text-xs">
+                                                            <strong>Compatibility:</strong>
+                                                            {product.custom_fields.map((field) => {
+                                                                if (field && field.name && field.name.startsWith('ymm_')) {
+                                                                    return (
+                                                                        <div key={field.name}>
+                                                                            {field.name.replace('ymm_', '').replace('_', ' ')}: {field.value || 'N/A'}
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <div className="mt-4 flex space-x-2">
+                                                        <a
+                                                            href={`${getStoreUrl()}/products/${product.custom_url?.url || product.id}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex-1 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm text-center"
+                                                        >
+                                                            View in Store
+                                                        </a>
+                                                        <a
+                                                            href={`https://store-${window.storeHash || 'demo'}.mybigcommerce.com/manage/products/${product.id}/edit`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex-1 bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded text-sm text-center"
+                                                        >
+                                                            Edit Product
+                                                        </a>
                                                     </div>
-                                                )}
-                                                
-                                                <div className="mt-4 flex space-x-2">
-                                                    <a
-                                                        href={`${getStoreUrl()}/products/${product.custom_url?.url || product.id}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="flex-1 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm text-center"
-                                                    >
-                                                        View in Store
-                                                    </a>
-                                                    <a
-                                                        href={`https://store-${window.storeHash || 'demo'}.mybigcommerce.com/manage/products/${product.id}/edit`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="flex-1 bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded text-sm text-center"
-                                                    >
-                                                        Edit Product
-                                                    </a>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}

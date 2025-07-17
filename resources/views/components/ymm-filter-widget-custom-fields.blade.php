@@ -190,6 +190,7 @@
             @{{ error }}
         </div>
         
+        @verbatim
         <div v-if="searchPerformed" class="ymm-results">
             <div v-if="loading" class="ymm-loading">
                 Searching for compatible products...
@@ -197,25 +198,26 @@
             
             <div v-else-if="compatibleProducts.length > 0">
                 <div class="ymm-results-count">
-                    Found @{{ compatibleProducts.length }} compatible products for @{{ selectedYear }} @{{ selectedMake }} @{{ selectedModel }}
+                    Found {{ compatibleProducts.length }} compatible products for {{ selectedYear }} {{ selectedMake }} {{ selectedModel }}
                 </div>
                 
                 <div class="ymm-products-list">
                     <div v-for="product in compatibleProducts" :key="product.id" class="ymm-product-item">
-                        <div class="ymm-product-name">@{{ product.name }}</div>
-                        <div class="ymm-product-sku">SKU: @{{ product.sku }}</div>
-                        <div class="ymm-product-price">${@{{ product.price }}</div>
+                        <div class="ymm-product-name">{{ product.name }}</div>
+                        <div class="ymm-product-sku">SKU: {{ product.sku }}</div>
+                        <div class="ymm-product-price">${{ product.price }}</div>
                     </div>
                 </div>
             </div>
             
             <div v-else>
                 <div class="ymm-results-count">
-                    No compatible products found for @{{ selectedYear }} @{{ selectedMake }} @{{ selectedModel }}
+                    No compatible products found for {{ selectedYear }} {{ selectedMake }} {{ selectedModel }}
                 </div>
                 <p>Try selecting a different vehicle or <button class="ymm-btn ymm-btn-secondary" @click="clearFilter">view all products</button>.</p>
             </div>
         </div>
+        @endverbatim
     </div>
 
     <script>
@@ -394,7 +396,7 @@
                         }
                         
                         const data = await response.json();
-                        this.compatibleProducts = data.products || [];
+                        this.compatibleProducts = data.data || data.products || [];
                         
                         // Hide non-compatible products on the page
                         this.filterProductsOnPage();

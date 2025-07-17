@@ -27,8 +27,10 @@ This guide shows you how to add the Vehicle Compatibility Filter to your BigComm
        {{{snippet 'categories'}}}
        
        <!-- YMM Vehicle Filter Widget -->
-       <div id="ymm-filter-container" style="margin: 20px 0;">
-           <!-- Widget will be loaded here -->
+       <div id="ymm-filter-container" style="margin: 20px 0; clear: both;">
+           <div style="padding: 20px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; text-align: center;">
+               <p style="margin: 0; color: #666;">🔧 Loading vehicle compatibility filter...</p>
+           </div>
        </div>
        
        {{#if category.products}}
@@ -38,6 +40,9 @@ This guide shows you how to add the Vehicle Compatibility Filter to your BigComm
        {{/if}}
        {{{region name="category_below_content"}}}
    </main>
+   
+   <!-- Load Vue.js if not already loaded -->
+   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
    
    <script>
    // Load the YMM filter widget with store identification
@@ -64,7 +69,7 @@ This guide shows you how to add the Vehicle Compatibility Filter to your BigComm
            })
            .catch(error => {
                console.error('Error loading YMM filter:', error);
-               container.innerHTML = '<p style="color: red;">Failed to load vehicle filter. Please refresh the page.</p>';
+               container.innerHTML = '<div style="padding: 20px; background: #ffe6e6; border: 1px solid #ff0000; border-radius: 8px; text-align: center;"><p style="margin: 0; color: #cc0000;">⚠️ Failed to load vehicle filter. Please refresh the page.</p></div>';
            });
    }
    
@@ -74,6 +79,14 @@ This guide shows you how to add the Vehicle Compatibility Filter to your BigComm
    } else {
        loadYmmWidget();
    }
+   
+   // Cleanup on page unload to prevent memory leaks
+   window.addEventListener('beforeunload', function() {
+       const container = document.getElementById('ymm-filter-container');
+       if (container && container.__vue__) {
+           container.__vue__.$destroy();
+       }
+   });
    </script>
    ```
 
@@ -174,12 +187,17 @@ Add custom CSS to match your theme. In your theme's CSS file (usually `assets/th
 1. **Go to Storefront > Web Pages**
 2. **Create a new page or edit existing category pages**
 3. **Use the HTML widget** in the page builder
-4. **Add this HTML code:**
+4. **Add this HTML code (NO iframe - direct integration):**
 
 ```html
-<div id="ymm-vehicle-filter"></div>
+<!-- YMM Vehicle Filter Widget Container -->
+<div id="ymm-vehicle-filter" style="margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9;">
+    <p style="text-align: center; color: #666;">Loading vehicle filter...</p>
+</div>
 
+<!-- Load Vue.js if not already loaded -->
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
 <script>
 // Load the YMM filter widget from your app with error handling
 function loadYmmWidget() {
@@ -205,7 +223,7 @@ function loadYmmWidget() {
         })
         .catch(error => {
             console.error('Error loading YMM filter:', error);
-            container.innerHTML = '<p style="color: red;">Failed to load vehicle filter.</p>';
+            container.innerHTML = '<div style="color: red; text-align: center; padding: 20px;">Failed to load vehicle filter. Please refresh the page or contact support.</div>';
         });
 }
 
@@ -215,8 +233,25 @@ if (document.readyState === 'loading') {
 } else {
     loadYmmWidget();
 }
+
+// Cleanup function to prevent memory leaks
+window.addEventListener('beforeunload', function() {
+    const container = document.getElementById('ymm-vehicle-filter');
+    if (container && container.__vue__) {
+        container.__vue__.$destroy();
+    }
+});
 </script>
+
+<!-- Ensure all tags are properly closed -->
+<div style="clear: both;"></div>
 ```
+
+**Important Notes:**
+- ❌ **Don't use iframe** - it breaks page layout and causes issues
+- ✅ **Use direct HTML injection** - this method is safer and more reliable
+- ✅ **All HTML tags are properly closed** to prevent layout issues
+- ✅ **Includes cleanup code** to prevent memory leaks
 
 ## Method 3: Global Header/Footer Integration
 
@@ -372,6 +407,14 @@ window.ymmConfig = {
 - Ensure the script runs after the DOM is loaded (the updated examples include DOM ready checks)
 - Check that the div ID matches exactly what the JavaScript is looking for
 
+**Layout issues with iframe:**
+- This means the widget container div doesn't exist when the script runs or iframe is breaking the layout
+- Make sure you have the proper container div in your template
+- **NEVER use iframe** for widget embedding - it breaks page layouts
+- Use the direct HTML injection method shown above instead
+- Ensure all HTML tags are properly closed: `<div>...</div>`, `<script>...</script>`
+- Check for unclosed tags that might break page structure
+
 **Widget doesn't load:**
 - Check the app URL in your integration code
 - Verify your app is running and accessible
@@ -494,6 +537,12 @@ If you're having issues, follow these steps:
 - **Fix:** Make sure ngrok tunnel is running
 - **Fix:** Verify you're using `/ymm-widget` endpoint, not `/api/widget/ymm-filter`
 - **Fix:** Make sure the URL doesn't have `{{YOUR_APP_URL}}` placeholders
+
+**"Session store not set on request" Error**
+- **Cause:** Widget API calls don't have session context (this is normal for external widgets)
+- **Fix:** This error should be automatically handled now with the updated API code
+- **Fix:** Make sure you're passing the store_hash parameter in widget requests
+- **Fix:** The app will fallback to database credentials if session is unavailable
 
 **Widget shows but doesn't function**
 - **Cause:** Vue.js not loaded or JavaScript errors

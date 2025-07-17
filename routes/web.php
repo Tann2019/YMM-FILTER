@@ -23,6 +23,11 @@ use App\Http\Controllers\MainController;
 |
 */
 
+// API Test Page
+Route::get('/api-test', function () {
+    return view('api-test');
+});
+
 Route::get('/', function () {
     return Inertia::render('Welcome', [
         'canLogin' => Route::has('login'),
@@ -156,17 +161,18 @@ Route::any('/bc-api/{endpoint}', [MainController::class, 'proxyBigCommerceAPIReq
     ->where('endpoint', 'v2/.*|v3/.*');
 
 // Widget routes for embedding in BigCommerce storefront
-Route::get('/ymm-widget', function () {
-    $response = response(view('components.ymm-filter-widget-custom-fields'));
+Route::middleware(['widget.cors'])->group(function () {
+    Route::get('/ymm-widget', function () {
+        $response = response(view('components.ymm-filter-widget-custom-fields'));
+        
+        // Add headers for better browser compatibility
+        $response->header('X-Frame-Options', 'ALLOWALL');
+        $response->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+        
+        return $response;
+    });
     
-    // Add headers for better browser compatibility
-    $response->header('X-Frame-Options', 'ALLOWALL');
-    $response->header('Access-Control-Allow-Origin', '*');
-    $response->header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    $response->header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    $response->header('Cache-Control', 'no-cache, no-store, must-revalidate');
-    
-    return $response;
+    Route::get('/product-compatibility/{productId}', [BigCommerceApiController::class, 'getProductCompatibilityInfo']);
 });
 
 // Widget test page for debugging
@@ -174,7 +180,10 @@ Route::get('/widget-test', function () {
     return view('widget-test');
 });
 
-Route::get('/product-compatibility/{productId}', [BigCommerceApiController::class, 'getProductCompatibilityInfo']);;
+// API test route
+Route::get('/api-test', function () {
+    return view('api-test');
+});;
 
 // Include debug routes
 require __DIR__.'/debug.php';

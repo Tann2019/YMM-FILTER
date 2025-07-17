@@ -45,9 +45,11 @@ Route::get('product-vehicles/export', [ProductVehicleController::class, 'exportA
 Route::post('settings', [ProductVehicleController::class, 'saveSettings']);
 Route::get('settings', [ProductVehicleController::class, 'getSettings']);
 
-// BigCommerce Custom Fields API routes (new approach)
-Route::get('bigcommerce/products-with-ymm', [BigCommerceApiController::class, 'getProductsWithYmmFields']);
-Route::get('bigcommerce/compatible-products', [BigCommerceApiController::class, 'getCompatibleProductsByCustomFields']);
-Route::get('bigcommerce/makes', [BigCommerceApiController::class, 'getAvailableMakes']);
-Route::get('bigcommerce/models', [BigCommerceApiController::class, 'getAvailableModels']);
-Route::get('bigcommerce/years', [BigCommerceApiController::class, 'getAvailableYears']);
+// BigCommerce Custom Fields API routes (stateless, no session required)
+Route::middleware(['widget.cors'])->group(function () {
+    Route::get('bigcommerce/products-with-ymm', [BigCommerceApiController::class, 'getProductsWithYmmFields']);
+    Route::get('bigcommerce/compatible-products', [BigCommerceApiController::class, 'getCompatibleProductsByCustomFields']);
+    Route::get('bigcommerce/makes', [BigCommerceApiController::class, 'getAvailableMakes']);
+    Route::get('bigcommerce/models', [BigCommerceApiController::class, 'getAvailableModels']);
+    Route::get('bigcommerce/years', [BigCommerceApiController::class, 'getAvailableYears']);
+});
