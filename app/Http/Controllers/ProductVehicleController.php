@@ -15,7 +15,7 @@ class ProductVehicleController extends Controller
      */
     public function getProductVehicles($productId): JsonResponse
     {
-        $productVehicles = ProductVehicle::where('product_id', $productId)
+        $productVehicles = ProductVehicle::where('bigcommerce_product_id', $productId)
             ->with('vehicle')
             ->get();
 
@@ -37,12 +37,12 @@ class ProductVehicleController extends Controller
         ]);
 
         // Remove existing associations for this product
-        ProductVehicle::where('product_id', $productId)->delete();
+        ProductVehicle::where('bigcommerce_product_id', $productId)->delete();
 
         // Create new associations
         foreach ($request->vehicle_ids as $vehicleId) {
             ProductVehicle::create([
-                'product_id' => $productId,
+                'bigcommerce_product_id' => $productId,
                 'vehicle_id' => $vehicleId,
             ]);
         }
@@ -58,7 +58,7 @@ class ProductVehicleController extends Controller
      */
     public function dissociateVehicle($productId, $vehicleId): JsonResponse
     {
-        $deleted = ProductVehicle::where('product_id', $productId)
+        $deleted = ProductVehicle::where('bigcommerce_product_id', $productId)
             ->where('vehicle_id', $vehicleId)
             ->delete();
 
@@ -101,7 +101,7 @@ class ProductVehicleController extends Controller
         }
 
         $productVehicles = $query->get();
-        $productIds = $productVehicles->pluck('product_id')->unique();
+        $productIds = $productVehicles->pluck('bigcommerce_product_id')->unique();
 
         return response()->json([
             'product_ids' => $productIds->values(),
@@ -165,10 +165,10 @@ class ProductVehicleController extends Controller
 
         $file = $request->file('csv_file');
         $csvData = array_map('str_getcsv', file($file->path()));
-        
+
         // Remove header row if present
         $header = array_shift($csvData);
-        
+
         $imported = 0;
         $skipped = 0;
         $errors = [];
@@ -198,17 +198,17 @@ class ProductVehicleController extends Controller
             }
 
             // Check if association already exists
-            $existingAssociation = ProductVehicle::where('product_id', $productId)
+            $existingAssociation = ProductVehicle::where('bigcommerce_product_id', $productId)
                 ->where('vehicle_id', $vehicle->id)
                 ->first();
 
             if (!$existingAssociation) {
                 ProductVehicle::create([
-                    'product_id' => $productId,
+                    'bigcommerce_product_id' => $productId,
                     'vehicle_id' => $vehicle->id,
                 ]);
                 $imported++;
-                
+
                 // Clear cache for this product
                 Cache::forget("product_vehicles_{$productId}");
             } else {
@@ -236,7 +236,7 @@ class ProductVehicleController extends Controller
 
         foreach ($associations as $association) {
             $csvData[] = [
-                $association->product_id,
+                $association->bigcommerce_product_id,
                 $association->vehicle->year,
                 $association->vehicle->make,
                 $association->vehicle->model,

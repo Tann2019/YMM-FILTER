@@ -6,8 +6,15 @@ use App\Http\Controllers\VehicleManagementController;
 use App\Http\Controllers\BigCommerceYmmController;
 use App\Http\Controllers\BigCommerceTestController;
 use App\Http\Controllers\BigCommerceApiController;
+use App\Http\Controllers\BigCommerceAppController;
+use App\Http\Controllers\YmmManagementController;
+use App\Http\Controllers\WidgetController;
+use App\Models\BigCommerceStore;
+use App\Services\BigCommerceService;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 use App\Http\Controllers\MainController;
@@ -23,6 +30,74 @@ use App\Http\Controllers\MainController;
 |
 */
 
+// BigCommerce App callbacks - BOTH /auth AND /api/auth to be safe
+Route::get('auth', [BigCommerceAppController::class, 'install'])->name('auth');
+Route::get('load', [BigCommerceAppController::class, 'load'])->name('load');
+Route::get('uninstall', [BigCommerceAppController::class, 'uninstall'])->name('uninstall');
+
+// BigCommerce might call /auth/load instead of /load
+Route::prefix('auth')->group(function () {
+    Route::get('load', [BigCommerceAppController::class, 'load'])->name('auth.load');
+    Route::get('uninstall', [BigCommerceAppController::class, 'uninstall'])->name('auth.uninstall');
+    Route::get('remove_user', [BigCommerceAppController::class, 'removeUser'])->name('auth.remove_user');
+});
+
+// Debug endpoint to catch any load attempts
+Route::get('debug-load', function (Request $request) {
+    Log::info('Debug Load Endpoint Called', [
+        'method' => $request->method(),
+        'query' => $request->query(),
+        'all' => $request->all(),
+        'headers' => $request->headers->all()
+    ]);
+    return response()->json(['message' => 'Debug load endpoint reached', 'query' => $request->query()]);
+});
+
+// BigCommerce App callbacks (MUST be at /api/* according to BigCommerce docs)
+Route::prefix('api')->group(function () {
+    Route::get('auth', [BigCommerceAppController::class, 'install'])->name('api.auth');
+    Route::get('load', [BigCommerceAppController::class, 'load'])->name('api.load');
+    Route::get('uninstall', [BigCommerceAppController::class, 'uninstall'])->name('api.uninstall');
+    Route::get('remove_user', [BigCommerceAppController::class, 'removeUser'])->name('api.remove_user');
+
+    // Debug endpoint
+    Route::get('test', function () {
+        return [
+            'message' => 'BigCommerce API endpoints are working!',
+            'timestamp' => now(),
+            'routes' => [
+                'auth' => url('/api/auth'),
+                'load' => url('/api/load'),
+                'uninstall' => url('/api/uninstall'),
+                'remove_user' => url('/api/remove_user')
+            ]
+        ];
+    });
+});
+
+// OLD BigCommerce routes - REMOVE THESE
+// Route::post('/bigcommerce/install', [BigCommerceAppController::class, 'install'])->name('bigcommerce.install');
+// Route::get('/bigcommerce/load', [BigCommerceAppController::class, 'load'])->name('bigcommerce.load');
+// Route::post('/bigcommerce/uninstall', [BigCommerceAppController::class, 'uninstall'])->name('bigcommerce.uninstall');
+
+// For BigCommerce app development - these are the MAIN callback routes
+// Route::prefix('bigcommerce')->group(function () {
+//     // Installation callback
+//     Route::get('auth', [BigCommerceAppController::class, 'install'])->name('bigcommerce.auth');
+//     // Load callback
+//     Route::get('load', [BigCommerceAppController::class, 'load'])->name('bigcommerce.load');
+//     // Uninstall callback  
+//     Route::get('uninstall', [BigCommerceAppController::class, 'uninstall'])->name('bigcommerce.uninstall');
+//     // Remove user callback
+//     Route::get('remove-user', [BigCommerceAppController::class, 'removeUser'])->name('bigcommerce.remove-user');
+// });
+
+// Public YMM API endpoints (for widget)
+Route::prefix('api/ymm/{storeHash}')->group(function () {
+    Route::get('/data', [YmmManagementController::class, 'getYmmData'])->name('api.ymm.data');
+    Route::post('/check', [YmmManagementController::class, 'checkCompatibility'])->name('api.ymm.check');
+});
+
 // API Test Page
 Route::get('/api-test', function () {
     return view('api-test');
@@ -35,6 +110,64 @@ Route::get('/', function () {
         'laravelVersion' => Application::VERSION,
         'phpVersion' => PHP_VERSION,
     ]);
+});
+
+// BigCommerce App Dashboard (store-specific routes)
+Route::prefix('app/{storeHash}')->group(function () {
+    Route::get('/dashboard', [BigCommerceAppController::class, 'dashboard'])->name('app.dashboard');
+
+    // Vehicle Management
+    Route::get('/vehicles', [YmmManagementController::class, 'vehicles'])->name('app.vehicles');
+    Route::post('/vehicles', [YmmManagementController::class, 'storeVehicle'])->name('app.vehicles.store');
+    Route::put('/vehicles/{vehicleId}', [YmmManagementController::class, 'updateVehicle'])->name('app.vehicles.update');
+    Route::delete('/vehicles/{vehicleId}', [YmmManagementController::class, 'deleteVehicle'])->name('app.vehicles.delete');
+
+    // Product Management
+    Route::get('/products', [YmmManagementController::class, 'products'])->name('app.products');
+    Route::post('/products/compatibility', [YmmManagementController::class, 'addProductCompatibility'])->name('app.products.compatibility.add');
+    Route::delete('/products/compatibility', [YmmManagementController::class, 'removeProductCompatibility'])->name('app.products.compatibility.remove');
+    Route::get('/products/export', [YmmManagementController::class, 'exportProducts'])->name('app.products.export');
+    Route::post('/products/import', [YmmManagementController::class, 'importProductCompatibility'])->name('app.products.import');
+
+    // Settings
+    Route::get('/settings', [YmmManagementController::class, 'settings'])->name('app.settings');
+    Route::post('/settings', [YmmManagementController::class, 'updateSettings'])->name('app.settings.update');
+
+    // Widget Management
+    Route::post('/widgets/pagebuilder', [WidgetController::class, 'createPageBuilderWidget'])->name('app.widgets.create');
+    Route::put('/widgets/pagebuilder/{templateId}', [WidgetController::class, 'updatePageBuilderWidget'])->name('app.widgets.update');
+    Route::get('/widgets/templates', [WidgetController::class, 'getWidgetTemplates'])->name('app.widgets.templates');
+
+    // Test route for BigCommerce API
+    Route::get('/test-bc-api', function () {
+        try {
+            $storeHash = 'rgp5uxku7h';
+            $store = BigCommerceStore::where('store_hash', $storeHash)->first();
+
+            if (!$store) {
+                return ['error' => 'Store not found'];
+            }
+
+            $service = new BigCommerceService();
+            $result = $service->makeApiCall($storeHash, '/catalog/products?limit=5');
+
+            return [
+                'success' => true,
+                'store_hash' => $storeHash,
+                'store_found' => true,
+                'api_result' => $result
+            ];
+        } catch (\Exception $e) {
+            return [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ];
+        }
+    });
+
+    // Import/Export
+    Route::post('/vehicles/import', [YmmManagementController::class, 'importVehicles'])->name('app.vehicles.import');
+    Route::get('/vehicles/export', [YmmManagementController::class, 'exportVehicles'])->name('app.vehicles.export');
 });
 
 Route::middleware('auth')->group(function () {
@@ -106,24 +239,21 @@ Route::prefix('api/vehicles')->group(function () {
     Route::get('/{vehicle}/products', [VehicleManagementController::class, 'getVehicleProducts']);
 });
 
-Route::group(['prefix' => 'auth'], function () {
-    // BigCommerce OAuth callback - must be /auth according to docs
-    Route::get('/', [MainController::class, 'install']);
-
-    Route::get('load', [MainController::class, 'load']);
-    
-    Route::get('error', [MainController::class, 'error']);
-
-    Route::get('uninstall', function () {
-        echo 'uninstall';
-        return app()->version();
-    });
-
-    Route::get('remove-user', function () {
-        echo 'remove-user';
-        return app()->version();
-    });
-});
+// OLD ROUTES - COMMENTING OUT TO AVOID CONFLICTS
+// Route::group(['prefix' => 'auth'], function () {
+//     // BigCommerce OAuth callback - must be /auth according to docs
+//     Route::get('/', [MainController::class, 'install']);
+//     Route::get('load', [MainController::class, 'load']);
+//     Route::get('error', [MainController::class, 'error']);
+//     Route::get('uninstall', function () {
+//         echo 'uninstall';
+//         return app()->version();
+//     });
+//     Route::get('remove-user', function () {
+//         echo 'remove-user';
+//         return app()->version();
+//     });
+// });
 
 // Debug route to check session data
 Route::get('/debug/session', function () {
@@ -141,7 +271,7 @@ Route::get('/debug/session', function () {
 Route::get('/test-store-hash', function () {
     $controller = new \App\Http\Controllers\MainController();
     $request = request();
-    
+
     return [
         'app_env' => env('APP_ENV'),
         'bc_local_store_hash_env' => env('BC_LOCAL_STORE_HASH'),
@@ -164,14 +294,14 @@ Route::any('/bc-api/{endpoint}', [MainController::class, 'proxyBigCommerceAPIReq
 Route::middleware(['widget.cors'])->group(function () {
     Route::get('/ymm-widget', function () {
         $response = response(view('components.ymm-filter-widget-custom-fields'));
-        
+
         // Add headers for better browser compatibility
         $response->header('X-Frame-Options', 'ALLOWALL');
         $response->header('Cache-Control', 'no-cache, no-store, must-revalidate');
-        
+
         return $response;
     });
-    
+
     Route::get('/product-compatibility/{productId}', [BigCommerceApiController::class, 'getProductCompatibilityInfo']);
 });
 
@@ -180,12 +310,15 @@ Route::get('/widget-test', function () {
     return view('widget-test');
 });
 
+// Public widget rendering (no auth required for BigCommerce storefronts)
+Route::get('/widget/{storeHash}', [WidgetController::class, 'renderWidget'])->name('widget.render');
+
 // API test route
 Route::get('/api-test', function () {
     return view('api-test');
 });;
 
 // Include debug routes
-require __DIR__.'/debug.php';
+require __DIR__ . '/debug.php';
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

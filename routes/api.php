@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\ProductVehicleController;
 use App\Http\Controllers\BigCommerceApiController;
+use App\Http\Controllers\Api\YmmApiController;
 
 /*
 |--------------------------------------------------------------------------
@@ -27,6 +28,16 @@ Route::apiResource('vehicles', VehicleController::class);
 // Additional vehicle lookup routes
 Route::get('vehicles/year/{year}/makes', [VehicleController::class, 'getMakesByYear']);
 Route::get('vehicles/year/{year}/make/{make}/models', [VehicleController::class, 'getModelsByYearAndMake']);
+
+// YMM Widget API routes (public, no auth required)
+Route::prefix('ymm/{storeHash}')->group(function () {
+    Route::get('years', [YmmApiController::class, 'getYears']);
+    Route::get('makes', [YmmApiController::class, 'getMakes']);
+    Route::get('models', [YmmApiController::class, 'getModels']);
+    Route::get('search', [YmmApiController::class, 'searchCompatibleProducts']);
+    Route::get('config', [YmmApiController::class, 'getWidgetConfig']);
+    Route::get('health', [YmmApiController::class, 'healthCheck']);
+});
 
 // Product-Vehicle association routes
 Route::get('products/{productId}/vehicles', [ProductVehicleController::class, 'getProductVehicles']);

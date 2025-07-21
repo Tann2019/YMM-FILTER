@@ -17,10 +17,11 @@ class BigCommerceStore extends Model
         'store_name',
         'access_token',
         'user_id',
-        'user_email', 
+        'user_email',
         'owner_id',
         'owner_email',
         'scope',
+        'settings',
         'installed_at',
         'last_accessed_at',
         'active'
@@ -28,6 +29,7 @@ class BigCommerceStore extends Model
 
     protected $casts = [
         'scope' => 'array',
+        'settings' => 'array',
         'installed_at' => 'datetime',
         'last_accessed_at' => 'datetime',
         'active' => 'boolean'
@@ -44,6 +46,30 @@ class BigCommerceStore extends Model
     public function setAccessTokenAttribute($value)
     {
         $this->attributes['access_token'] = $value ? encrypt($value) : null;
+    }
+
+    /**
+     * Get the client that owns this store
+     */
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+
+    /**
+     * Get all vehicles for this store
+     */
+    public function vehicles()
+    {
+        return $this->hasMany(Vehicle::class, 'store_hash', 'store_hash');
+    }
+
+    /**
+     * Get all product vehicle relationships for this store
+     */
+    public function productVehicles()
+    {
+        return $this->hasMany(ProductVehicle::class, 'store_hash', 'store_hash');
     }
 
     /**
