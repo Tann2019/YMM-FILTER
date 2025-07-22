@@ -30,7 +30,7 @@ Route::get('vehicles/year/{year}/makes', [VehicleController::class, 'getMakesByY
 Route::get('vehicles/year/{year}/make/{make}/models', [VehicleController::class, 'getModelsByYearAndMake']);
 
 // YMM Widget API routes (public, no auth required)
-Route::prefix('ymm/{storeHash}')->group(function () {
+Route::middleware(['widget.cors'])->prefix('ymm/{storeHash}')->group(function () {
     Route::get('years', [YmmApiController::class, 'getYears']);
     Route::get('makes', [YmmApiController::class, 'getMakes']);
     Route::get('models', [YmmApiController::class, 'getModels']);

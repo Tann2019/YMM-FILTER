@@ -9,8 +9,7 @@ use App\Models\Vehicle;
 use App\Services\BigCommerceService;
 use Inertia\Inertia;
 
-class WidgetController extends Controller
-{
+class WidgetController extends Controller {
     protected $bigCommerceService;
 
     public function __construct(BigCommerceService $bigCommerceService)
@@ -26,10 +25,13 @@ class WidgetController extends Controller
         $store = BigCommerceStore::where('store_hash', $storeHash)->firstOrFail();
 
         try {
+            // Get hardcoded API URL for widget
+            $apiUrl = rtrim(config('app.url'), '/');
+            
             // Try to create widget template first (if we have content scope)
             $widgetTemplate = [
                 'name' => 'YMM Vehicle Filter',
-                'template' => $this->getWidgetTemplate(),
+                'template' => $this->getWidgetTemplate($apiUrl, $storeHash),
                 'schema' => $this->getWidgetSchema()
             ];
 
@@ -62,9 +64,12 @@ class WidgetController extends Controller
         $store = BigCommerceStore::where('store_hash', $storeHash)->firstOrFail();
 
         try {
+            // Get hardcoded API URL for widget update
+            $apiUrl = rtrim(config('app.url'), '/');
+            
             $widgetTemplate = [
                 'name' => 'YMM Vehicle Filter',
-                'template' => $this->getWidgetTemplate(),
+                'template' => $this->getWidgetTemplate($apiUrl, $storeHash),
                 'schema' => $this->getWidgetSchema()
             ];
 
@@ -242,16 +247,25 @@ class WidgetController extends Controller
     }
 
     /**
-     * Get the widget HTML template
+     * Get the widget HTML template with hardcoded API URL and store hash
+     * 
+     * @param string $apiUrl The API URL to use for the widget
+     * @param string $storeHash The store hash to use for the widget
+     * @return string The widget HTML template
      */
-    private function getWidgetTemplate()
+    private function getWidgetTemplate($apiUrl = null, $storeHash = null)
     {
+        $apiUrl = $apiUrl ?: config('app.url');
+        
+        if (!$storeHash) {
+            throw new \InvalidArgumentException('Store hash is required for widget template generation');
+        }
         return '
 {{#if title}}
     <h3 class="ymm-widget-title">{{title}}</h3>
 {{/if}}
 
-<div class="ymm-filter-widget" data-theme="{{theme}}" data-store-hash="{{@store.hash}}">
+<div class="ymm-filter-widget" data-theme="{{theme}}">
     <div class="ymm-filter-form">
         <div class="ymm-filter-row">
             <div class="ymm-filter-field">
@@ -282,12 +296,18 @@ class WidgetController extends Controller
             </button>
         </div>
     </div>
-    <div id="ymm-results" class="ymm-results" style="display: none;">
-        <div class="ymm-loading">
-            <div class="ymm-spinner"></div>
-            <span>Searching compatible products...</span>
-        </div>
-        <div class="ymm-product-list"></div>
+</div>
+
+<!-- Loading and Results Section -->
+<div id="ymm-loading" style="display: none;">
+    <div class="ymm-loading-spinner"></div>
+    <p>Finding compatible products...</p>
+</div>
+
+<div id="ymm-results" style="display: none;">
+    <h4>Compatible Products</h4>
+    <div id="ymm-products-grid" class="ymm-products-grid">
+        <!-- Products will be loaded here -->
     </div>
 </div>
 
@@ -388,33 +408,6 @@ class WidgetController extends Controller
     background-color: #e5e7eb;
 }
 
-.ymm-results {
-    margin-top: 20px;
-}
-
-.ymm-loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    color: #6b7280;
-}
-
-.ymm-spinner {
-    width: 20px;
-    height: 20px;
-    border: 2px solid #e5e7eb;
-    border-top: 2px solid {{primary_color}};
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-right: 10px;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
 /* Theme Variations */
 .ymm-filter-widget[data-theme="modern"] {
     border: none;
@@ -440,176 +433,58 @@ class WidgetController extends Controller
         flex-direction: column;
     }
 }
-</style>
 
-<script>
-(function() {
-    const widget = document.querySelector(".ymm-filter-widget");
-    const storeHash = widget.dataset.storeHash;
-    const apiUrl = "{{@store.url}}";
-    
-    let yearSelect = document.getElementById("ymm-year");
-    let makeSelect = document.getElementById("ymm-make");
-    let modelSelect = document.getElementById("ymm-model");
-    let searchBtn = document.getElementById("ymm-search-btn");
-    let clearBtn = document.getElementById("ymm-clear-btn");
-    let results = document.getElementById("ymm-results");
-    
-    // Initialize the widget
-    loadYears();
-    
-    // Event listeners
-    yearSelect.addEventListener("change", handleYearChange);
-    makeSelect.addEventListener("change", handleMakeChange);
-    modelSelect.addEventListener("change", handleModelChange);
-    searchBtn.addEventListener("click", handleSearch);
-    clearBtn.addEventListener("click", handleClear);
-    
-    function loadYears() {
-        fetch(`${apiUrl}/api/ymm/${storeHash}/years`)
-            .then(response => response.json())
-            .then(years => {
-                populateSelect(yearSelect, years);
-            })
-            .catch(error => console.error("Error loading years:", error));
-    }
-    
-    function handleYearChange() {
-        const year = yearSelect.value;
-        makeSelect.innerHTML = `<option value="">{{placeholder_make}}</option>`;
-        modelSelect.innerHTML = `<option value="">{{placeholder_model}}</option>`;
-        
-        if (year) {
-            fetch(`${apiUrl}/api/ymm/${storeHash}/makes?year=${year}`)
-                .then(response => response.json())
-                .then(makes => {
-                    populateSelect(makeSelect, makes);
-                })
-                .catch(error => console.error("Error loading makes:", error));
-        }
-    }
-    
-    function handleMakeChange() {
-        const year = yearSelect.value;
-        const make = makeSelect.value;
-        modelSelect.innerHTML = `<option value="">{{placeholder_model}}</option>`;
-        
-        if (year && make) {
-            fetch(`${apiUrl}/api/ymm/${storeHash}/models?year=${year}&make=${encodeURIComponent(make)}`)
-                .then(response => response.json())
-                .then(models => {
-                    populateSelect(modelSelect, models);
-                })
-                .catch(error => console.error("Error loading models:", error));
-        }
-    }
-    
-    function handleModelChange() {
-        updateSearchButton();
-    }
-    
-    function handleSearch() {
-        const year = yearSelect.value;
-        const make = makeSelect.value;
-        const model = modelSelect.value;
-        
-        if (!year || !make || !model) {
-            alert("Please select year, make, and model");
-            return;
-        }
-        
-        // Show loading
-        results.style.display = "block";
-        results.querySelector(".ymm-product-list").innerHTML = "";
-        results.querySelector(".ymm-loading").style.display = "flex";
-        
-        // Search for compatible products
-        fetch(`${apiUrl}/api/ymm/${storeHash}/search?year=${year}&make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`)
-            .then(response => response.json())
-            .then(data => {
-                results.querySelector(".ymm-loading").style.display = "none";
-                displayResults(data.products || []);
-            })
-            .catch(error => {
-                console.error("Error searching products:", error);
-                results.querySelector(".ymm-loading").style.display = "none";
-                results.querySelector(".ymm-product-list").innerHTML = "<p>Error loading products. Please try again.</p>";
-            });
-    }
-    
-    function handleClear() {
-        yearSelect.value = "";
-        makeSelect.innerHTML = `<option value="">{{placeholder_make}}</option>`;
-        modelSelect.innerHTML = `<option value="">{{placeholder_model}}</option>`;
-        results.style.display = "none";
-        updateSearchButton();
-    }
-    
-    function populateSelect(select, options) {
-        options.forEach(option => {
-            const optionElement = document.createElement("option");
-            optionElement.value = option;
-            optionElement.textContent = option;
-            select.appendChild(optionElement);
-        });
-    }
-    
-    function updateSearchButton() {
-        const year = yearSelect.value;
-        const make = makeSelect.value;
-        const model = modelSelect.value;
-        
-        searchBtn.disabled = !year || !make || !model;
-    }
-    
-    function displayResults(products) {
-        const productList = results.querySelector(".ymm-product-list");
-        
-        if (products.length === 0) {
-            productList.innerHTML = "<p>No compatible products found for your vehicle.</p>";
-            return;
-        }
-        
-        const html = products.map(product => `
-            <div class="ymm-product-item">
-                ${product.images && product.images[0] ? 
-                    `<img src="${product.images[0].url_thumbnail}" alt="${product.name}" class="ymm-product-image">` 
-                    : ""
-                }
-                <div class="ymm-product-info">
-                    <h4 class="ymm-product-name">${product.name}</h4>
-                    <p class="ymm-product-price">$${product.price}</p>
-                    <a href="${product.custom_url?.url || "#"}" class="ymm-product-link">View Product</a>
-                </div>
-            </div>
-        `).join("");
-        
-        productList.innerHTML = `
-            <h4>Compatible Products (${products.length})</h4>
-            <div class="ymm-product-grid">${html}</div>
-        `;
-    }
-})();
-</script>
+/* Loading and Results Styles */
+#ymm-loading {
+    text-align: center;
+    padding: 20px;
+    color: #6b7280;
+}
 
-<style>
-.ymm-product-grid {
+.ymm-loading-spinner {
+    display: inline-block;
+    width: 30px;
+    height: 30px;
+    border: 3px solid #e5e7eb;
+    border-top: 3px solid #3b82f6;
+    border-radius: 50%;
+    animation: ymm-spin 1s linear infinite;
+    margin-bottom: 10px;
+}
+
+@keyframes ymm-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+#ymm-results {
+    margin-top: 20px;
+    padding: 20px;
+    border-top: 1px solid #e1e5e9;
+}
+
+#ymm-results h4 {
+    margin: 0 0 15px 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.ymm-products-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: 15px;
-    margin-top: 15px;
 }
 
-.ymm-product-item {
+.ymm-product-card {
     border: 1px solid #e1e5e9;
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 15px;
-    text-align: center;
-    background: #fff;
-    transition: transform 0.2s ease;
+    background: #f9fafb;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.ymm-product-item:hover {
+.ymm-product-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
@@ -624,34 +499,350 @@ class WidgetController extends Controller
 
 .ymm-product-name {
     font-size: 1rem;
-    font-weight: 500;
-    margin-bottom: 5px;
+    font-weight: 600;
+    margin-bottom: 8px;
     color: #2d3748;
+    line-height: 1.4;
 }
 
 .ymm-product-price {
-    font-size: 1.125rem;
-    font-weight: 600;
-    color: {{primary_color}};
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #3b82f6;
     margin-bottom: 10px;
 }
 
 .ymm-product-link {
     display: inline-block;
-    padding: 8px 16px;
-    background-color: {{button_color}};
+    background: #3b82f6;
     color: white;
+    padding: 8px 16px;
     text-decoration: none;
     border-radius: 4px;
     font-size: 0.875rem;
-    transition: background-color 0.15s ease;
+    font-weight: 500;
+    transition: background-color 0.2s ease;
 }
 
 .ymm-product-link:hover {
-    background-color: #1e40af;
+    background: #2563eb;
     text-decoration: none;
 }
+
+.ymm-no-results {
+    text-align: center;
+    padding: 30px;
+    color: #6b7280;
+}
+
+.ymm-no-results h5 {
+    margin: 0 0 10px 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
 </style>
+
+<script>
+(function() {
+    // Hardcoded API URL and store hash - injected at widget creation time
+    const apiUrl = "' . rtrim($apiUrl, '/') . '";
+    const storeHash = "' . $storeHash . '";
+    
+    console.log("YMM Widget initialized with hardcoded values:", { apiUrl, storeHash });
+    
+    let yearSelect = document.getElementById("ymm-year");
+    let makeSelect = document.getElementById("ymm-make");
+    let modelSelect = document.getElementById("ymm-model");
+    let searchBtn = document.getElementById("ymm-search-btn");
+    let clearBtn = document.getElementById("ymm-clear-btn");
+    
+    // Initialize the widget
+    loadYears();
+    
+    // Event listeners
+    if (yearSelect) yearSelect.addEventListener("change", handleYearChange);
+    if (makeSelect) makeSelect.addEventListener("change", handleMakeChange);
+    if (modelSelect) modelSelect.addEventListener("change", handleModelChange);
+    if (searchBtn) searchBtn.addEventListener("click", handleSearch);
+    if (clearBtn) clearBtn.addEventListener("click", handleClear);
+    
+    function loadYears() {
+        const url = apiUrl + "/api/ymm/" + storeHash + "/years";
+        console.log("Loading years from:", url);
+        
+        fetch(url, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "ngrok-skip-browser-warning": "true"
+            },
+            mode: "cors"
+        })
+        .then(response => {
+            console.log("Years response status:", response.status);
+            if (!response.ok) {
+                throw new Error("HTTP " + response.status + ": " + response.statusText);
+            }
+            return response.json();
+        })
+        .then(years => {
+            console.log("Years loaded:", years);
+            populateSelect(yearSelect, years);
+        })
+        .catch(error => {
+            console.error("Error loading years:", error, "from URL:", url);
+        });
+    }
+    
+    function handleYearChange() {
+        const year = yearSelect.value;
+        if (makeSelect) makeSelect.innerHTML = "<option value=\\"\\">{{placeholder_make}}</option>";
+        if (modelSelect) modelSelect.innerHTML = "<option value=\\"\\">{{placeholder_model}}</option>";
+        
+        if (year) {
+            const url = apiUrl + "/api/ymm/" + storeHash + "/makes?year=" + encodeURIComponent(year);
+            console.log("Loading makes from:", url);
+            
+            fetch(url, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "ngrok-skip-browser-warning": "true"
+                },
+                mode: "cors"
+            })
+            .then(response => {
+                console.log("Makes response status:", response.status);
+                if (!response.ok) {
+                    throw new Error("HTTP " + response.status + ": " + response.statusText);
+                }
+                return response.json();
+            })
+            .then(makes => {
+                console.log("Makes loaded:", makes);
+                populateSelect(makeSelect, makes);
+            })
+            .catch(error => {
+                console.error("Error loading makes:", error, "from URL:", url);
+            });
+        }
+    }
+    
+    function handleMakeChange() {
+        const year = yearSelect.value;
+        const make = makeSelect.value;
+        if (modelSelect) modelSelect.innerHTML = "<option value=\\"\\">{{placeholder_model}}</option>";
+        
+        if (year && make) {
+            const url = apiUrl + "/api/ymm/" + storeHash + "/models?year=" + encodeURIComponent(year) + "&make=" + encodeURIComponent(make);
+            console.log("Loading models from:", url);
+            
+            fetch(url, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "ngrok-skip-browser-warning": "true"
+                },
+                mode: "cors"
+            })
+            .then(response => {
+                console.log("Models response status:", response.status);
+                if (!response.ok) {
+                    throw new Error("HTTP " + response.status + ": " + response.statusText);
+                }
+                return response.json();
+            })
+            .then(models => {
+                console.log("Models loaded:", models);
+                populateSelect(modelSelect, models);
+            })
+            .catch(error => {
+                console.error("Error loading models:", error, "from URL:", url);
+            });
+        }
+    }
+    
+    function handleModelChange() {
+        updateSearchButton();
+    }
+    
+    function handleSearch() {
+        const year = yearSelect ? yearSelect.value : "";
+        const make = makeSelect ? makeSelect.value : "";
+        const model = modelSelect ? modelSelect.value : "";
+        
+        if (!year || !make || !model) {
+            alert("Please select year, make, and model");
+            return;
+        }
+        
+        // Show loading state
+        const loadingDiv = document.getElementById("ymm-loading");
+        const resultsDiv = document.getElementById("ymm-results");
+        
+        if (loadingDiv) loadingDiv.style.display = "block";
+        if (resultsDiv) resultsDiv.style.display = "none";
+        
+        // First, get compatible products to build the search query
+        const url = apiUrl + "/api/ymm/" + storeHash + "/search?year=" + encodeURIComponent(year) + "&make=" + encodeURIComponent(make) + "&model=" + encodeURIComponent(model);
+        console.log("Getting compatible products:", url);
+        
+        fetch(url, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "ngrok-skip-browser-warning": "true"
+            },
+            mode: "cors"
+        })
+        .then(response => {
+            console.log("Search response status:", response.status);
+            if (!response.ok) {
+                throw new Error("HTTP " + response.status + ": " + response.statusText);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("Compatible products:", data);
+            if (loadingDiv) loadingDiv.style.display = "none";
+            
+            const products = data.products || [];
+            if (products.length > 0) {
+                // Redirect to BigCommerce search with compatible product names/SKUs
+                redirectToBigCommerceSearch(products, year, make, model);
+            } else {
+                displayResults([]);
+            }
+        })
+        .catch(error => {
+            console.error("Error getting compatible products:", error, "from URL:", url);
+            if (loadingDiv) loadingDiv.style.display = "none";
+            
+            // Fallback: redirect to BigCommerce search with vehicle info
+            const searchQuery = year + " " + make + " " + model;
+            const bigCommerceUrl = "/search.php?mode=1&search_query_adv=" + encodeURIComponent(searchQuery) + "&searchsubs=ON&section=product";
+            console.log("Fallback: redirecting to BigCommerce search:", bigCommerceUrl);
+            window.location.href = bigCommerceUrl;
+        });
+    }
+    
+    function redirectToBigCommerceSearch(products, year, make, model) {
+        // Create search query from product names and SKUs
+        const productTerms = [];
+        const skus = [];
+        
+        products.forEach(function(product) {
+            if (product.name) {
+                // Extract key terms from product names (avoid common words)
+                const nameTerms = product.name.split(/\s+/).filter(function(term) {
+                    const commonWords = ["for", "the", "and", "with", "auto", "car", "truck", "vehicle"];
+                    return term.length > 2 && !commonWords.includes(term.toLowerCase());
+                });
+                productTerms.push(...nameTerms);
+            }
+            if (product.sku) {
+                skus.push(product.sku);
+            }
+        });
+        
+        // Build search parameters
+        let searchQuery = "";
+        let additionalParams = "";
+        
+        // Strategy 1: Use SKUs if available (most accurate)
+        if (skus.length > 0) {
+            searchQuery = skus.slice(0, 5).join(" OR "); // Limit SKUs to avoid URL length issues
+            console.log("Using SKU-based search:", searchQuery);
+        }
+        // Strategy 2: Use vehicle info + key product terms
+        else if (productTerms.length > 0) {
+            const vehicleTerms = [year, make, model];
+            const uniqueTerms = [...new Set([...vehicleTerms, ...productTerms.slice(0, 5)])]; // Remove duplicates
+            searchQuery = uniqueTerms.join(" ");
+            console.log("Using vehicle + product terms search:", searchQuery);
+        }
+        // Strategy 3: Vehicle info only (fallback)
+        else {
+            searchQuery = year + " " + make + " " + model;
+            console.log("Using vehicle-only search:", searchQuery);
+        }
+        
+        // Add category filter if we know the category (you can customize this)
+        // Looking at your URL, category[]=27 seems to be for specific parts
+        // You might want to add: additionalParams = "&category[]=27";
+        
+        // Build final BigCommerce search URL
+        const bigCommerceUrl = "/search.php?mode=1&search_query_adv=" + encodeURIComponent(searchQuery) + 
+                              "&searchsubs=ON&section=product" + additionalParams;
+        
+        console.log("Redirecting to BigCommerce search:", bigCommerceUrl);
+        console.log("Search will show results matching:", searchQuery);
+        
+        // Add a small delay for user feedback, then redirect
+        setTimeout(function() {
+            window.location.href = bigCommerceUrl;
+        }, 500);
+    }
+    
+    function handleClear() {
+        if (yearSelect) yearSelect.value = "";
+        if (makeSelect) makeSelect.innerHTML = "<option value=\\"\\">{{placeholder_make}}</option>";
+        if (modelSelect) modelSelect.innerHTML = "<option value=\\"\\">{{placeholder_model}}</option>";
+        updateSearchButton();
+    }
+    
+    function populateSelect(select, options) {
+        if (!select || !options) return;
+        
+        options.forEach(function(option) {
+            const optionElement = document.createElement("option");
+            optionElement.value = option;
+            optionElement.textContent = option;
+            select.appendChild(optionElement);
+        });
+    }
+    
+    function updateSearchButton() {
+        const year = yearSelect ? yearSelect.value : "";
+        const make = makeSelect ? makeSelect.value : "";
+        const model = modelSelect ? modelSelect.value : "";
+        
+        if (searchBtn) {
+            searchBtn.disabled = !year || !make || !model;
+        }
+    }
+    
+    function displayResults(products) {
+        const resultsDiv = document.getElementById("ymm-results");
+        const productsGrid = document.getElementById("ymm-products-grid");
+        
+        if (!resultsDiv || !productsGrid) return;
+        
+        if (products && products.length > 0) {
+            const html = products.map(function(product) {
+                return \'<div class="ymm-product-card">\' +
+                    (product.images && product.images[0] ? 
+                        \'<img src="\' + product.images[0].url_thumbnail + \'" alt="\' + product.name + \'" class="ymm-product-image">\' 
+                        : \'\') +
+                    \'<h5 class="ymm-product-name">\' + product.name + \'</h5>\' +
+                    \'<div class="ymm-product-price">$\' + (product.price || product.calculated_price || \'N/A\') + \'</div>\' +
+                    \'<a href="\' + (product.custom_url && product.custom_url.url ? product.custom_url.url : \'#\') + \'" class="ymm-product-link">View Product</a>\' +
+                \'</div>\';
+            }).join(\'\');
+            
+            productsGrid.innerHTML = html;
+        } else {
+            productsGrid.innerHTML = \'<div class="ymm-no-results"><h5>No Compatible Products Found</h5><p>Sorry, we couldn\\\'t find any products compatible with your vehicle selection.</p></div>\';
+        }
+        
+        resultsDiv.style.display = "block";
+    }
+})();
+</script>
 ';
     }
 }

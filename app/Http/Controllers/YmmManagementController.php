@@ -1349,4 +1349,23 @@ class YmmManagementController extends Controller
 
         return redirect()->back()->with('success', $message)->with('import_errors', $errors);
     }
+
+    /**
+     * YMM Results page - displays products based on URL parameters
+     */
+    public function ymmResults(Request $request)
+    {
+        $year = $request->get('ymm-year');
+        $make = $request->get('ymm-make');
+        $model = $request->get('ymm-model');
+
+        // For now, return a simple view with the parameters
+        // Web designers can customize this page however they want
+        return view('ymm-results', [
+            'year' => $year,
+            'make' => $make,
+            'model' => $model,
+            'pageTitle' => $year && $make && $model ? "Compatible Products for {$year} {$make} {$model}" : 'Vehicle Compatibility Results'
+        ]);
+    }
 }

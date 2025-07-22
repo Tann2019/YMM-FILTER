@@ -10,7 +10,7 @@ use App\Services\BigCommerceService;
 $service = app(BigCommerceService::class);
 $storeHash = 'rgp5uxku7h';
 
-// Create the corrected template with hardcoded store hash
+// Create the corrected template with proper store hash extraction
 $templateData = [
     'name' => 'YMM Vehicle Filter',
     'template' => '
@@ -26,12 +26,15 @@ $templateData = [
     <p class="ymm-widget-description">Select your vehicle to find compatible products</p>
 {{/if}}
 
-<div class="ymm-filter-widget" data-theme="{{theme}}" data-store-url="{{@store.secure_url}}">
+<div class="ymm-filter-widget" 
+     data-theme="{{theme}}" 
+     data-store-hash="{{@store.store_hash}}"
+     data-store-url="{{@store.secure_url}}">
     <div class="ymm-filter-form">
         <div class="ymm-filter-row">
             <div class="ymm-filter-field">
-                <label for="ymm-year">Year</label>
-                <select id="ymm-year" class="ymm-select">
+                <label for="ymm-year-{{@store.store_hash}}">Year</label>
+                <select id="ymm-year-{{@store.store_hash}}" class="ymm-select">
                     <option value="">Select Year</option>
                 </select>
             </div>
@@ -39,8 +42,8 @@ $templateData = [
         
         <div class="ymm-filter-row">
             <div class="ymm-filter-field">
-                <label for="ymm-make">Make</label>
-                <select id="ymm-make" class="ymm-select" disabled>
+                <label for="ymm-make-{{@store.store_hash}}">Make</label>
+                <select id="ymm-make-{{@store.store_hash}}" class="ymm-select" disabled>
                     <option value="">Select Make</option>
                 </select>
             </div>
@@ -48,28 +51,29 @@ $templateData = [
         
         <div class="ymm-filter-row">
             <div class="ymm-filter-field">
-                <label for="ymm-model">Model</label>
-                <select id="ymm-model" class="ymm-select" disabled>
+                <label for="ymm-model-{{@store.store_hash}}">Model</label>
+                <select id="ymm-model-{{@store.store_hash}}" class="ymm-select" disabled>
                     <option value="">Select Model</option>
                 </select>
             </div>
         </div>
         
         <div class="ymm-filter-actions">
-            <button id="ymm-search-btn" class="ymm-btn ymm-btn-primary" disabled>
+            <button id="ymm-search-btn-{{@store.store_hash}}" class="ymm-btn ymm-btn-primary" disabled>
                 Search Products
             </button>
-            <button id="ymm-clear-btn" class="ymm-btn ymm-btn-secondary">
+            <button id="ymm-clear-btn-{{@store.store_hash}}" class="ymm-btn ymm-btn-secondary">
                 Clear
             </button>
         </div>
     </div>
     
-    <div id="ymm-results" class="ymm-results" style="display: none;">
+    <div id="ymm-results-{{@store.store_hash}}" class="ymm-results" style="display: none;">
         <div class="ymm-loading" style="display: none;">
             <p>Loading...</p>
         </div>
         <div class="ymm-product-list"></div>
+        <div class="ymm-error-message" style="display: none; color: red; padding: 10px;"></div>
     </div>
 </div>
 
@@ -213,21 +217,32 @@ $templateData = [
 <script>
 (function() {
     const widget = document.querySelector(".ymm-filter-widget");
+    if (!widget) return;
+    
+    const storeHash = widget.dataset.storeHash;
     const storeUrl = widget.dataset.storeUrl;
     
-    // Extract store hash from the store URL
-    // BigCommerce URLs are like: https://store-abc123.mybigcommerce.com
-    const storeHash = storeUrl.match(/https:\/\/([^.]+)\.mybigcommerce\.com/)?.[1] || 
-                     window.location.hostname.split(' . ')[0]; // fallback to current hostname
-    
+    // Use the ngrok URL for development
     const apiUrl = "' . config('app.url') . '";
     
-    let yearSelect = document.getElementById("ymm-year");
-    let makeSelect = document.getElementById("ymm-make");
-    let modelSelect = document.getElementById("ymm-model");
-    let searchBtn = document.getElementById("ymm-search-btn");
-    let clearBtn = document.getElementById("ymm-clear-btn");
-    let results = document.getElementById("ymm-results");
+    console.log("YMM Widget Initialized:");
+    console.log("Store Hash:", storeHash);
+    console.log("Store URL:", storeUrl);
+    console.log("API URL:", apiUrl);
+    console.log("API Endpoint Example:", apiUrl + "/api/ymm/" + storeHash + "/years");
+    
+    // Get elements with store hash suffix
+    let yearSelect = document.getElementById("ymm-year-" + storeHash);
+    let makeSelect = document.getElementById("ymm-make-" + storeHash);
+    let modelSelect = document.getElementById("ymm-model-" + storeHash);
+    let searchBtn = document.getElementById("ymm-search-btn-" + storeHash);
+    let clearBtn = document.getElementById("ymm-clear-btn-" + storeHash);
+    let results = document.getElementById("ymm-results-" + storeHash);
+    
+    if (!yearSelect || !makeSelect || !modelSelect || !searchBtn || !clearBtn || !results) {
+        console.error("YMM Widget: Required elements not found");
+        return;
+    }
     
     // Initialize the widget
     loadYears();
@@ -240,41 +255,116 @@ $templateData = [
     clearBtn.addEventListener("click", handleClear);
     
     function loadYears() {
-        fetch(`${apiUrl}/api/ymm/${storeHash}/years`)
-            .then(response => response.json())
-            .then(years => {
-                populateSelect(yearSelect, years);
+        const url = apiUrl + "/api/ymm/" + storeHash + "/years";
+        console.log("Loading years from:", url);
+        
+        fetch(url, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "ngrok-skip-browser-warning": "true"
+            },
+            mode: "cors"
+        })
+            .then(response => {
+                console.log("Years response status:", response.status);
+                console.log("Years response headers:", response.headers);
+                if (!response.ok) {
+                    throw new Error("HTTP " + response.status + ": " + response.statusText);
+                }
+                return response.json();
             })
-            .catch(error => console.error("Error loading years:", error));
+            .then(years => {
+                console.log("Years loaded:", years);
+                const select = document.getElementById("ymm-year-" + storeHash);
+                years.forEach(year => {
+                    const option = document.createElement("option");
+                    option.value = year;
+                    option.textContent = year;
+                    select.appendChild(option);
+                });
+                makeSelect.disabled = false;
+            })
+            .catch(error => {
+                console.error("Error loading years:", error);
+                console.log("Full error details:", {
+                    message: error.message,
+                    stack: error.stack,
+                    url: url
+                });
+                showError("Failed to load years. Please check your connection.");
+            });
     }
     
     function handleYearChange() {
         const year = yearSelect.value;
-        makeSelect.innerHTML = `<option value="">Select Make</option>`;
-        modelSelect.innerHTML = `<option value="">Select Model</option>`;
+        makeSelect.innerHTML = "<option value=\"\">Select Make</option>";
+        modelSelect.innerHTML = "<option value=\"\">Select Model</option>";
+        makeSelect.disabled = !year;
+        modelSelect.disabled = true;
+        updateSearchButton();
         
         if (year) {
-            fetch(`${apiUrl}/api/ymm/${storeHash}/makes?year=${year}`)
-                .then(response => response.json())
+            const url = apiUrl + "/api/ymm/" + storeHash + "/makes?year=" + year;
+            fetch(url, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "ngrok-skip-browser-warning": "true"
+                },
+                mode: "cors"
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("HTTP " + response.status + ": " + response.statusText);
+                    }
+                    return response.json();
+                })
                 .then(makes => {
                     populateSelect(makeSelect, makes);
+                    makeSelect.disabled = false;
                 })
-                .catch(error => console.error("Error loading makes:", error));
+                .catch(error => {
+                    console.error("Error loading makes:", error);
+                    showError("Failed to load makes.");
+                });
         }
     }
     
     function handleMakeChange() {
         const year = yearSelect.value;
         const make = makeSelect.value;
-        modelSelect.innerHTML = `<option value="">Select Model</option>`;
+        modelSelect.innerHTML = "<option value=\"\">Select Model</option>";
+        modelSelect.disabled = !make;
+        updateSearchButton();
         
         if (year && make) {
-            fetch(`${apiUrl}/api/ymm/${storeHash}/models?year=${year}&make=${encodeURIComponent(make)}`)
-                .then(response => response.json())
+            const url = apiUrl + "/api/ymm/" + storeHash + "/models?year=" + year + "&make=" + encodeURIComponent(make);
+            fetch(url, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "ngrok-skip-browser-warning": "true"
+                },
+                mode: "cors"
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error("HTTP " + response.status + ": " + response.statusText);
+                    }
+                    return response.json();
+                })
                 .then(models => {
                     populateSelect(modelSelect, models);
+                    modelSelect.disabled = false;
                 })
-                .catch(error => console.error("Error loading models:", error));
+                .catch(error => {
+                    console.error("Error loading models:", error);
+                    showError("Failed to load models.");
+                });
         }
     }
     
@@ -295,11 +385,26 @@ $templateData = [
         // Show loading
         results.style.display = "block";
         results.querySelector(".ymm-product-list").innerHTML = "";
-        results.querySelector(".ymm-loading").style.display = "flex";
+        results.querySelector(".ymm-loading").style.display = "block";
+        hideError();
         
         // Search for compatible products
-        fetch(`${apiUrl}/api/ymm/${storeHash}/search?year=${year}&make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}`)
-            .then(response => response.json())
+        const url = apiUrl + "/api/ymm/" + storeHash + "/search?year=" + year + "&make=" + encodeURIComponent(make) + "&model=" + encodeURIComponent(model);
+        fetch(url, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "ngrok-skip-browser-warning": "true"
+            },
+            mode: "cors"
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error("HTTP " + response.status + ": " + response.statusText);
+                }
+                return response.json();
+            })
             .then(data => {
                 results.querySelector(".ymm-loading").style.display = "none";
                 displayResults(data.products || []);
@@ -307,15 +412,18 @@ $templateData = [
             .catch(error => {
                 console.error("Error searching products:", error);
                 results.querySelector(".ymm-loading").style.display = "none";
-                results.querySelector(".ymm-product-list").innerHTML = "<p>Error loading products. Please try again.</p>";
+                showError("Error loading products. Please try again.");
             });
     }
     
     function handleClear() {
         yearSelect.value = "";
-        makeSelect.innerHTML = `<option value="">Select Make</option>`;
-        modelSelect.innerHTML = `<option value="">Select Model</option>`;
+        makeSelect.innerHTML = "<option value=\"\">Select Make</option>";
+        modelSelect.innerHTML = "<option value=\"\">Select Model</option>";
+        makeSelect.disabled = true;
+        modelSelect.disabled = true;
         results.style.display = "none";
+        hideError();
         updateSearchButton();
     }
     
@@ -336,6 +444,21 @@ $templateData = [
         searchBtn.disabled = !year || !make || !model;
     }
     
+    function showError(message) {
+        const errorElement = results.querySelector(".ymm-error-message");
+        if (errorElement) {
+            errorElement.textContent = message;
+            errorElement.style.display = "block";
+        }
+    }
+    
+    function hideError() {
+        const errorElement = results.querySelector(".ymm-error-message");
+        if (errorElement) {
+            errorElement.style.display = "none";
+        }
+    }
+    
     function displayResults(products) {
         const productList = results.querySelector(".ymm-product-list");
         
@@ -347,7 +470,7 @@ $templateData = [
         const html = products.map(product => `
             <div class="ymm-product-item">
                 ${product.images && product.images[0] ? 
-                    `<img src="${product.images[0].url_thumbnail}" alt="${product.name}" class="ymm-product-image">` 
+                    "<img src=\"" + product.images[0].url_thumbnail + "\" alt=\"" + product.name + "\" class=\"ymm-product-image\">" 
                     : ""
                 }
                 <div class="ymm-product-info">
@@ -364,13 +487,20 @@ $templateData = [
         `;
     }
 })();
-</script>'
+</script>
+'
 ];
 
 try {
     $result = $service->makeApiCall($storeHash, '/content/widget-templates/84192e4f-589f-4638-b4a0-c4096d447bb1', 'PUT', $templateData);
     echo "Widget template updated successfully!\n";
-    echo "The widget should now work with the correct store hash.\n";
+    echo "The widget should now work with the correct store hash and error handling.\n";
+    echo "Changes made:\n";
+    echo "- Fixed store hash extraction to use {{@store.store_hash}}\n";
+    echo "- Added unique element IDs with store hash suffix\n";
+    echo "- Improved error handling and logging\n";
+    echo "- Added CORS headers for ngrok development\n";
+    echo "- Added proper loading states and error messages\n";
 } catch (Exception $e) {
     echo "Error updating template: " . $e->getMessage() . "\n";
 }

@@ -7,7 +7,29 @@ export default function Dashboard({ store, stats, settings }) {
 
     const handleInstallWidget = () => {
         setIsLoading(true);
-        router.post(`/app/${store.store_hash}/install-widget`, {}, {
+        // Use the same working approach as the Create Widget button
+        router.post(`/app/${store.store_hash}/widgets/pagebuilder`, {}, {
+            onSuccess: (page) => {
+                if (page.props.flash?.success) {
+                    alert('Success: ' + page.props.flash.success);
+                } else if (page.props.flash?.info) {
+                    alert('Info: ' + page.props.flash.info);
+                } else {
+                    alert('Widget installed successfully!');
+                }
+            },
+            onError: (errors) => {
+                console.error('Widget installation failed:', errors);
+                let errorMessage = 'Widget installation failed. ';
+                if (errors.error) {
+                    errorMessage += errors.error;
+                } else if (typeof errors === 'string') {
+                    errorMessage += errors;
+                } else {
+                    errorMessage += 'Please try again or check the console for details.';
+                }
+                alert(errorMessage);
+            },
             onFinish: () => setIsLoading(false)
         });
     };
@@ -15,11 +37,27 @@ export default function Dashboard({ store, stats, settings }) {
     const handleCreateWidget = () => {
         setIsCreatingWidget(true);
         router.post(`/app/${store.store_hash}/widgets/pagebuilder`, {}, {
-            onSuccess: () => {
-                // Show success message or redirect
+            onSuccess: (page) => {
+                // Check the response for success/info messages
+                if (page.props.flash?.success) {
+                    alert('Success: ' + page.props.flash.success);
+                } else if (page.props.flash?.info) {
+                    alert('Info: ' + page.props.flash.info);
+                } else {
+                    alert('Widget created successfully!');
+                }
             },
             onError: (errors) => {
                 console.error('Widget creation failed:', errors);
+                let errorMessage = 'Widget creation failed. ';
+                if (errors.error) {
+                    errorMessage += errors.error;
+                } else if (typeof errors === 'string') {
+                    errorMessage += errors;
+                } else {
+                    errorMessage += 'Please try again or check the console for details.';
+                }
+                alert(errorMessage);
             },
             onFinish: () => setIsCreatingWidget(false)
         });
@@ -48,6 +86,12 @@ export default function Dashboard({ store, stats, settings }) {
                                     className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
                                 >
                                     Manage Vehicles
+                                </Link>
+                                <Link
+                                    href={`/app/${store.store_hash}/widget-management`}
+                                    className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
+                                >
+                                    Widget Management
                                 </Link>
                                 <Link
                                     href={`/app/${store.store_hash}/settings`}
@@ -235,6 +279,23 @@ export default function Dashboard({ store, stats, settings }) {
                                         </div>
                                     </Link>
 
+                                    <Link
+                                        href={`/app/${store.store_hash}/widget-management`}
+                                        className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                                    >
+                                        <div className="flex items-center">
+                                            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                                                <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                </svg>
+                                            </div>
+                                            <div className="ml-4">
+                                                <h4 className="text-sm font-medium text-gray-900">Widget Management</h4>
+                                                <p className="text-sm text-gray-500">Install and manage BigCommerce widgets</p>
+                                            </div>
+                                        </div>
+                                    </Link>
+
                                     <div className="block p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center">
@@ -244,8 +305,8 @@ export default function Dashboard({ store, stats, settings }) {
                                                     </svg>
                                                 </div>
                                                 <div className="ml-4">
-                                                    <h4 className="text-sm font-medium text-gray-900">Create Page Builder Widget</h4>
-                                                    <p className="text-sm text-gray-500">Add drag-and-drop widget to Page Builder</p>
+                                                    <h4 className="text-sm font-medium text-gray-900">Create YMM Filter Widget</h4>
+                                                    <p className="text-sm text-gray-500">Create a drag-and-drop widget for BigCommerce Page Builder with hardcoded API endpoints</p>
                                                 </div>
                                             </div>
                                             <button

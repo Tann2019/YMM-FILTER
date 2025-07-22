@@ -9,6 +9,7 @@ use App\Http\Controllers\BigCommerceApiController;
 use App\Http\Controllers\BigCommerceAppController;
 use App\Http\Controllers\YmmManagementController;
 use App\Http\Controllers\WidgetController;
+use App\Http\Controllers\WidgetManagementController;
 use App\Models\BigCommerceStore;
 use App\Services\BigCommerceService;
 use Illuminate\Foundation\Application;
@@ -103,6 +104,9 @@ Route::get('/api-test', function () {
     return view('api-test');
 });
 
+// YMM Results Page (public route for redirects from widget)
+Route::get('/ymm-results', [YmmManagementController::class, 'ymmResults'])->name('ymm.results');
+
 Route::get('/', function () {
     return Inertia::render('Welcome', [
         'canLogin' => Route::has('login'),
@@ -134,6 +138,15 @@ Route::prefix('app/{storeHash}')->group(function () {
     Route::post('/settings', [YmmManagementController::class, 'updateSettings'])->name('app.settings.update');
 
     // Widget Management
+    Route::get('/widget-management', [WidgetManagementController::class, 'index'])->name('app.widget-management');
+    Route::post('/install-widget', [WidgetManagementController::class, 'install'])->name('app.install-widget');
+    Route::get('/api/widgets', [WidgetManagementController::class, 'getWidgets'])->name('app.api.widgets.list');
+    Route::post('/api/widgets/install', [WidgetManagementController::class, 'install'])->name('app.api.widgets.install');
+    Route::post('/api/widgets/create-ymm', [WidgetManagementController::class, 'createYmmWidget'])->name('app.api.widgets.create-ymm');
+    Route::post('/api/widgets/remove', [WidgetManagementController::class, 'remove'])->name('app.api.widgets.remove');
+    Route::post('/api/widgets/remove-all', [WidgetManagementController::class, 'removeAll'])->name('app.api.widgets.remove-all');
+    Route::post('/api/widgets/preview', [WidgetManagementController::class, 'getPreview'])->name('app.api.widgets.preview');
+    
     Route::post('/widgets/pagebuilder', [WidgetController::class, 'createPageBuilderWidget'])->name('app.widgets.create');
     Route::put('/widgets/pagebuilder/{templateId}', [WidgetController::class, 'updatePageBuilderWidget'])->name('app.widgets.update');
     Route::get('/widgets/templates', [WidgetController::class, 'getWidgetTemplates'])->name('app.widgets.templates');
@@ -198,6 +211,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/vehicle-management', function () {
         return Inertia::render('VehicleManagement');
     })->name('vehicle-management');
+
+    // Widget Management routes
+    Route::get('/widget-management', [WidgetManagementController::class, 'index'])->name('widget-management');
+    Route::get('/api/widgets', [WidgetManagementController::class, 'getWidgets'])->name('api.widgets.list');
+    Route::post('/api/widgets/install', [WidgetManagementController::class, 'install'])->name('api.widgets.install');
+    Route::post('/api/widgets/remove', [WidgetManagementController::class, 'remove'])->name('api.widgets.remove');
+    Route::post('/api/widgets/remove-all', [WidgetManagementController::class, 'removeAll'])->name('api.widgets.remove-all');
+    Route::post('/api/widgets/preview', [WidgetManagementController::class, 'getPreview'])->name('api.widgets.preview');
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
