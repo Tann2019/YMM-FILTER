@@ -574,8 +574,7 @@ class WidgetController extends Controller {
             method: "GET",
             headers: {
                 "Content-Type": "application/json",
-                "Accept": "application/json",
-                "ngrok-skip-browser-warning": "true"
+                "Accept": "application/json"
             },
             mode: "cors"
         })
@@ -608,8 +607,7 @@ class WidgetController extends Controller {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "ngrok-skip-browser-warning": "true"
+                    "Accept": "application/json"
                 },
                 mode: "cors"
             })
@@ -643,8 +641,7 @@ class WidgetController extends Controller {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    "ngrok-skip-browser-warning": "true"
+                    "Accept": "application/json"
                 },
                 mode: "cors"
             })
@@ -694,8 +691,7 @@ class WidgetController extends Controller {
             method: "GET",
             headers: {
                 "Content-Type": "application/json",
-                "Accept": "application/json",
-                "ngrok-skip-browser-warning": "true"
+                "Accept": "application/json"
             },
             mode: "cors"
         })
